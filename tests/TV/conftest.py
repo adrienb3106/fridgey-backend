@@ -2,13 +2,13 @@ import os
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database import engine, Base
+from app.database import Base
 from app.routers import users as users_router
 from app.routers import groups as groups_router
 from app.routers import items as items_router
@@ -41,37 +41,72 @@ def _seed_database(connection):
 
 @pytest.fixture(scope="function")
 def tv_db():
-    # Try to connect to the real DB
+    """Connecte une base dédiée aux TV (test DB), jamais la base de prod.
+
+    - Si TEST_DATABASE_URL est défini, l'utilise tel quel.
+    - Sinon, construit une URL MySQL à partir des variables .env et crée
+      la base `<DB_NAME>_test` (ou `fridgey_test` par défaut) si elle n'existe pas.
+    - Crée le schéma (tables) si absent.
+    - Isole chaque test par transaction + DELETE transactionnels.
+    """
+    test_url = os.getenv("TEST_DATABASE_URL")
+    if not test_url:
+        db_user = os.getenv("DB_USER", "root")
+        db_password = os.getenv("DB_PASSWORD", "")
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = os.getenv("DB_PORT", "3306")
+        base_name = os.getenv("DB_NAME", "fridgey")
+        test_name = os.getenv("DB_NAME_TEST", f"{base_name}_test")
+
+        server_url = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}"
+        try:
+            admin_engine = create_engine(server_url)
+            with admin_engine.connect() as admin_conn:
+                admin_conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{test_name}` CHARACTER SET utf8mb4"))
+        except SQLAlchemyError as e:
+            pytest.skip(
+                "Impossible de créer/accéder à la base de test. "
+                "Définis TEST_DATABASE_URL ou accordes le droit CREATE DATABASE.\n"
+                f"Détail: {e}"
+            )
+        test_url = f"{server_url}/{test_name}"
+
+    # Create engine for test DB
+    test_engine = create_engine(test_url)
+
+    # Ensure schema is present
     try:
-        connection = engine.connect()
-        # Begin a transaction for isolation
+        Base.metadata.create_all(bind=test_engine)
+    except SQLAlchemyError as e:
+        pytest.skip(f"Impossible de créer les tables sur la base de test: {e}")
+
+    # Open connection + begin transaction for isolation
+    try:
+        connection = test_engine.connect()
         trans = connection.begin()
     except SQLAlchemyError as e:
-        pytest.skip(f"DB indisponible pour les TV: {e}")
+        pytest.skip(f"Base de test indisponible: {e}")
 
-    # Optional: ensure schema exists (no-op if already present)
-    # Base.metadata.create_all(bind=connection)
-
-    # Clean tables using TRUNCATE and reset autoincrement
+    # Clean tables inside the transaction (safe, rolled back at teardown)
     try:
         connection.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-        for table in [
-            "stock_movements",
-            "stocks",
-            "user_groups",
-            "items",
-            "users",
-            "groups",
-        ]:
-            connection.execute(text(f"TRUNCATE TABLE {table}"))
+        # Delete in FK-safe order
+        connection.execute(text("DELETE FROM stock_movements"))
+        connection.execute(text("DELETE FROM stocks"))
+        connection.execute(text("DELETE FROM user_groups"))
+        connection.execute(text("DELETE FROM items"))
+        connection.execute(text("DELETE FROM users"))
+        connection.execute(text("DELETE FROM groups"))
+        # Reset AUTO_INCREMENT within this transaction
+        for table in ["users", "groups", "items", "stocks", "stock_movements"]:
+            connection.execute(text(f"ALTER TABLE {table} AUTO_INCREMENT = 1"))
         connection.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     except SQLAlchemyError:
-        # If tables don't exist or other issues, rollback and skip
         trans.rollback()
         connection.close()
-        pytest.skip("Impossible de nettoyer/initialiser la base pour les TV.")
+        pytest.skip("Impossible de nettoyer/initialiser la base de test pour les TV.")
 
-    # Seed with test data
+    # Seed with test data (transactional)
     _seed_database(connection)
 
     yield connection
