@@ -70,3 +70,26 @@ def test_groups_delete_without_links(client):
     # After delete -> 404
     r_get = client.get(f"/groups/{gid}")
     assert r_get.status_code == 404
+
+
+def test_group_delete_with_existing_link_returns_400(client):
+    # Create a user and a group
+    ru = client.post("/users/", json={"name": "Eve", "email": "eve@example.com"})
+    assert ru.status_code == 200
+    uid = ru.json()["id"]
+
+    rg = client.post("/groups/", json={"name": "Liens"})
+    assert rg.status_code == 200
+    gid = rg.json()["id"]
+
+    # Link user to group
+    rl = client.post(
+        "/groups/add_user",
+        json={"user_id": uid, "group_id": gid, "role": "member"},
+    )
+    assert rl.status_code == 200
+
+    # Attempt to delete the group while link exists -> FK violation handled by handler
+    r_del = client.delete(f"/groups/{gid}")
+    # Under SQLite (TU), IntegrityError does not expose MySQL error codes; default mapping is 400
+    assert r_del.status_code == 400

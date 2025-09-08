@@ -25,3 +25,9 @@ def test_groups_list_and_members(client):
     r_rm = client.delete("/groups/1/users/3")
     assert r_rm.status_code == 200
 
+
+@pytest.mark.tv
+def test_group_delete_with_existing_link_returns_409(client):
+    # Group 1 has linked users in the seed; deleting should raise FK violation -> 409
+    r_del = client.delete("/groups/1")
+    assert r_del.status_code == 409

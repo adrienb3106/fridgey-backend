@@ -12,7 +12,7 @@ class User(Base):
     email = Column(String(150), unique=True, index=True, nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    groups = relationship("UserGroup", back_populates="user")
+    groups = relationship("UserGroup", back_populates="user", passive_deletes=True)
     stocks = relationship("Stock", back_populates="user")
 
 
@@ -24,7 +24,7 @@ class Group(Base):
     name = Column(String(150), nullable=False)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    users = relationship("UserGroup", back_populates="group")
+    users = relationship("UserGroup", back_populates="group", passive_deletes=True)
     stocks = relationship("Stock", back_populates="group")
 
 

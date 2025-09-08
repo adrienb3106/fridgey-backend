@@ -26,8 +26,8 @@ def create_stock(stock: schemas.StockCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Item introuvable")
 
     new_stock = models.Stock(**stock.model_dump())
-    # Transaction unique pour stock + mouvement initial
-    with db.begin():
+    # Transaction unique pour stock + mouvement initial (compatible session déjà ouverte)
+    try:
         db.add(new_stock)
         # S'assurer que l'ID du stock est disponible pour le mouvement
         db.flush()
@@ -37,9 +37,13 @@ def create_stock(stock: schemas.StockCreate, db: Session = Depends(get_db)):
             note="Stock initial créé",
         )
         db.add(movement)
-
-    # Rafraîchir pour récupérer les colonnes générées (timestamps, etc.)
-    db.refresh(new_stock)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        # Rafraîchir pour récupérer les colonnes générées (timestamps, etc.)
+        db.refresh(new_stock)
     return new_stock
 
 
@@ -74,8 +78,8 @@ def update_stock_quantity(stock_id: int, change: float, db: Session = Depends(ge
     if new_remaining < 0:
         raise HTTPException(status_code=400, detail="Quantité insuffisante")
 
-    # Transaction unique pour mise à jour + mouvement
-    with db.begin():
+    # Transaction unique pour mise à jour + mouvement (compatible session déjà ouverte)
+    try:
         stock.remaining_quantity = new_remaining
         movement = models.StockMovement(
             stock_id=stock.id,
@@ -83,9 +87,13 @@ def update_stock_quantity(stock_id: int, change: float, db: Session = Depends(ge
             note="Mise à jour de la quantité",
         )
         db.add(movement)
-
-    # Rafraîchir pour refléter les valeurs mises à jour (p.ex. updated_at)
-    db.refresh(stock)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        # Rafraîchir pour refléter les valeurs mises à jour (p.ex. updated_at)
+        db.refresh(stock)
     return stock
 
 

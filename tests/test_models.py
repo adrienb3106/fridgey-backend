@@ -1,5 +1,14 @@
-from sqlalchemy import inspect
+import pytest
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError
 from app.database import engine
+
+# Skip ce module si la DB n'est pas accessible
+try:
+    with engine.connect() as _c:
+        _c.execute(text("SELECT 1"))
+except OperationalError:
+    pytest.skip("Base non accessible: skip tests de schéma en environnement local", allow_module_level=True)
 
 def test_users_table_schema():
     inspector = inspect(engine)
