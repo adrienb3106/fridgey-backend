@@ -1,9 +1,26 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import IntegrityError
 from app.routers import users, groups, items, stocks, stock_movements
 
 app = FastAPI(title="Fridgey API")
+
+# CORS (origines autorisées via env CORS_ORIGINS="http://localhost:3000,https://app.example.com" ou "*")
+origins_env = os.getenv("CORS_ORIGINS", "*")
+if origins_env.strip() == "*":
+    allow_origins = ["*"]
+else:
+    allow_origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Routes
 app.include_router(users.router, prefix="/users", tags=["Users"])

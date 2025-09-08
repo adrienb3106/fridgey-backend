@@ -18,6 +18,7 @@
   - `DB_HOST=localhost`
   - `DB_PORT=3306`
   - `DB_NAME=fridgey`
+  - `CORS_ORIGINS=*` (ou liste CSV: `http://localhost:3000,https://app.example.com`)
   - Option tests (au choix):
     - `TEST_DATABASE_URL=mysql+pymysql://user:pass@host:3306/fridgey_test`
     - ou `DB_NAME_TEST=fridgey_test` (le nom de base de test sera créé si possible)
@@ -25,6 +26,13 @@
 **Lancement API**
 - Démarrer le serveur: `cd fridgey-backend && uvicorn app.main:app --reload`
 - Swagger: `http://127.0.0.1:8000/docs`
+
+**CORS**
+- Par défaut, `CORS_ORIGINS` lu depuis l'environnement contrôle les origines autorisées.
+- Valeurs possibles:
+  - `*` (développement, toutes origines autorisées)
+  - Liste CSV d'origines précises: `http://localhost:3000,https://app.example.com`
+- Le middleware CORS est déclaré au démarrage de l'application.
 
 **Endpoints**
 - Users:
@@ -74,6 +82,15 @@
     - Tous les TV: `pytest -q -m tv` ou `pytest -q fridgey-backend/tests/TV`
     - Un test précis: `pytest fridgey-backend/tests/TV/test_groups_tv.py::test_groups_list_and_members -vv`
 
+**Campagne de tests (avec et sans couverture)**
+- Prérequis: `pytest-cov` (déjà listé dans `requirements.txt`).
+- Lancer la campagne complète: `python run_campaign.py`
+- Résultats: dossier `results/<horodatage>/` contenant pour chaque exécution:
+  - `stdout.txt`, `return_code.txt`, `report.xml` (JUnit)
+  - `coverage.xml` pour les runs avec couverture
+  - `summary.txt` (récapitulatif par run)
+- Synthèse globale: `results/<horodatage>/SUMMARY.txt` (totaux avec/sans couverture)
+
 **Base de test (TV) et configuration**
 - Variables d’environnement supportées (harmonisées):
   - `TEST_DATABASE_URL`: URL complète SQLAlchemy (recommandé pour CI/CD)
@@ -85,6 +102,7 @@
 - Décimaux: `PUT /stocks/{id}` convertit `change` en `Decimal` (évite `Decimal + float`).
 - Intégrité référentielle: `Stock -> StockMovement` avec `cascade="all, delete-orphan"` et FK `ON DELETE CASCADE`.
 - Pydantic v2: certains warnings liés à `orm_mode`; migration possible vers `from_attributes=True` + `.model_dump()`.
+- Connexions MySQL: l'engine SQLAlchemy est créé avec `pool_pre_ping=True` pour éviter les connexions mortes.
 
 **Dépannage**
 - TV échouent au seed: vérifier les droits `CREATE DATABASE` (ou créer manuellement la base de test), et renseigner `TEST_DATABASE_URL` ou `DB_NAME_TEST`.

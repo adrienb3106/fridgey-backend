@@ -21,8 +21,8 @@ TEST_DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT
 
 
 
-# Création du moteur SQLAlchemy
-engine = create_engine(DATABASE_URL)
+# Création du moteur SQLAlchemy avec pré-ping pour robustesse des connexions
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 # Session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
