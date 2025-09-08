@@ -15,3 +15,5 @@
 dist/
 build/
 
+# Test results
+results/
