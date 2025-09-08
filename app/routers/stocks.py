@@ -20,25 +20,26 @@ def get_db():
 
 @router.post("/", response_model=schemas.Stock)
 def create_stock(stock: schemas.StockCreate, db: Session = Depends(get_db)):
-    """Créer un stock"""
+    """Créer un stock (stock + mouvement initial atomiques)"""
     item = db.query(models.Item).filter(models.Item.id == stock.item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item introuvable")
 
     new_stock = models.Stock(**stock.model_dump())
-    db.add(new_stock)
-    db.commit()
+    # Transaction unique pour stock + mouvement initial
+    with db.begin():
+        db.add(new_stock)
+        # S'assurer que l'ID du stock est disponible pour le mouvement
+        db.flush()
+        movement = models.StockMovement(
+            stock_id=new_stock.id,
+            change_quantity=new_stock.initial_quantity,
+            note="Stock initial créé",
+        )
+        db.add(movement)
+
+    # Rafraîchir pour récupérer les colonnes générées (timestamps, etc.)
     db.refresh(new_stock)
-
-    # Ajout du mouvement initial (stock créé)
-    movement = models.StockMovement(
-        stock_id=new_stock.id,
-        change_quantity=new_stock.initial_quantity,
-        note="Stock initial créé"
-    )
-    db.add(movement)
-    db.commit()
-
     return new_stock
 
 
@@ -60,8 +61,8 @@ def get_stock(stock_id: int, db: Session = Depends(get_db)):
 @router.put("/{stock_id}", response_model=schemas.Stock)
 def update_stock_quantity(stock_id: int, change: float, db: Session = Depends(get_db)):
     """
-    Mettre à jour la quantité restante d'un stock
-    et enregistrer un mouvement associé
+    Mettre à jour la quantité restante d'un stock et enregistrer
+    le mouvement associé dans une seule transaction (atomique).
     """
     stock = db.query(models.Stock).filter(models.Stock.id == stock_id).first()
     if not stock:
@@ -73,20 +74,18 @@ def update_stock_quantity(stock_id: int, change: float, db: Session = Depends(ge
     if new_remaining < 0:
         raise HTTPException(status_code=400, detail="Quantité insuffisante")
 
-    # Mise à jour
-    stock.remaining_quantity = new_remaining
-    db.commit()
+    # Transaction unique pour mise à jour + mouvement
+    with db.begin():
+        stock.remaining_quantity = new_remaining
+        movement = models.StockMovement(
+            stock_id=stock.id,
+            change_quantity=change_decimal,
+            note="Mise à jour de la quantité",
+        )
+        db.add(movement)
+
+    # Rafraîchir pour refléter les valeurs mises à jour (p.ex. updated_at)
     db.refresh(stock)
-
-    # Création du mouvement
-    movement = models.StockMovement(
-        stock_id=stock.id,
-        change_quantity=change_decimal,
-        note="Mise à jour de la quantité"
-    )
-    db.add(movement)
-    db.commit()
-
     return stock
 
 
