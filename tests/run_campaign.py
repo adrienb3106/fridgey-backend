@@ -74,12 +74,96 @@ def parse_coverage_xml(xml_path: Path):
         return None
 
 
+def parse_coverage_details(xml_path: Path):
+    if not xml_path.exists():
+        return None
+    tree = ET.parse(xml_path)
+    root = tree.getroot()
+
+    def to_float(v, default=0.0):
+        try:
+            return float(v)
+        except Exception:
+            return default
+
+    files = []
+    total_lines = 0
+    covered_lines = 0
+
+    for pkg in root.findall("packages/package"):
+        for cls in pkg.findall("classes/class"):
+            filename = cls.attrib.get("filename", "")
+            rate = to_float(cls.attrib.get("line-rate", 0.0))
+
+            # Collect lines
+            line_elems = cls.findall("lines/line")
+            if not line_elems:
+                for m in cls.findall("methods/method"):
+                    line_elems.extend(m.findall("lines/line"))
+
+            lt = len(line_elems)
+            lc = 0
+            missed_list = []
+            for le in line_elems:
+                hits = int(le.attrib.get("hits", 0))
+                if hits > 0:
+                    lc += 1
+                else:
+                    try:
+                        num = int(le.attrib.get("number", 0))
+                        if num:
+                            missed_list.append(num)
+                    except Exception:
+                        pass
+            lm = max(lt - lc, 0)
+
+            methods = cls.findall("methods/method")
+            ft = len(methods)
+            fc = 0
+            missed_funcs = []
+            for m in methods:
+                mr = to_float(m.attrib.get("line-rate", 0.0))
+                if mr > 0:
+                    fc += 1
+                else:
+                    missed_funcs.append(m.attrib.get("name", "<anonymous>"))
+
+            files.append({
+                "filename": filename,
+                "line_rate": round(rate * 100.0, 2),
+                "lines_total": lt,
+                "lines_covered": lc,
+                "lines_missed": lm,
+                "missed_lines": sorted(missed_list),
+                "funcs_total": ft,
+                "funcs_covered": fc,
+                "funcs_missed": max(ft - fc, 0),
+                "missed_funcs": missed_funcs,
+            })
+
+            total_lines += lt
+            covered_lines += lc
+
+    overall_rate = round((covered_lines / total_lines) * 100.0, 2) if total_lines else 0.0
+    return {
+        "overall": {
+            "line_rate": overall_rate,
+            "files": len(files),
+            "lines_total": total_lines,
+            "lines_covered": covered_lines,
+            "lines_missed": max(total_lines - covered_lines, 0),
+        },
+        "files": files,
+    }
+
+
 def pytest_run(name: str, markers: str | None, with_cov: bool):
     out_dir = RESULTS_DIR / name
     ensure_dir(out_dir)
 
     junit_xml = out_dir / "report.xml"
     cov_xml = out_dir / "coverage.xml"
+    cov_html = out_dir / "htmlcov"
 
     base_cmd = [sys.executable, "-m", "pytest"]
 
@@ -96,10 +180,12 @@ def pytest_run(name: str, markers: str | None, with_cov: bool):
     cmd = base_cmd + ["-q", f"--junitxml={junit_xml}"]
 
     if with_cov:
+        # Run from backend dir; target the Python package/module name
         cmd += [
-            "--cov=fridgey-backend/app",
-            f"--cov-report=term-missing",
+            "--cov=app",
+            "--cov-report=term-missing",
             f"--cov-report=xml:{cov_xml}",
+            f"--cov-report=html:{cov_html}",
         ]
 
     # Ensure coverage file is written inside the run folder when enabled
@@ -176,6 +262,30 @@ def main():
         synth.append(
             f"{name}: rc={r['rc']} tests={j['tests']} fail={j['failures']} err={j['errors']} skip={j['skipped']} time={j['time']:.2f}s coverage={cov_s}"
         )
+
+    # Append detailed coverage for the full run (all_cov)
+    try:
+        all_cov = next(x for x in runs if x["name"] == "all_cov")
+        cov_xml_path = Path(all_cov["out_dir"]) / "coverage.xml"
+        det = parse_coverage_details(cov_xml_path)
+        if det and det.get("files"):
+            synth.append("")
+            synth.append("== Détails de couverture (all_cov) ==")
+            ov = det["overall"]
+            synth.append(
+                f"Global: fichiers={ov['files']} lignes={ov['lines_covered']}/{ov['lines_total']} ({ov['line_rate']}%) manquantes={ov['lines_missed']}"
+            )
+            for f in sorted(det["files"], key=lambda x: (x["line_rate"], x["filename"])):
+                synth.append(
+                    f"- {f['filename']}: lignes {f['lines_covered']}/{f['lines_total']} ({f['line_rate']}%), fonctions {f['funcs_covered']}/{f['funcs_total']}"
+                )
+                if f["lines_missed"]:
+                    synth.append("  lignes manquantes: " + ", ".join(map(str, f["missed_lines"])))
+                if f["funcs_missed"]:
+                    synth.append("  fonctions non couvertes: " + ", ".join(f["missed_funcs"]))
+    except Exception as e:
+        synth.append("")
+        synth.append(f"(Info) Détails couverture indisponibles: {e}")
 
     write_text(run_root / "SUMMARY.txt", "\n".join(synth) + "\n")
 
