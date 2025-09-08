@@ -12,12 +12,15 @@
 
 **Installation**
 - Installer les dépendances: `pip install -r fridgey-backend/requirements.txt`
-- Créer un fichier `.env` dans `fridgey-backend/` avec par exemple:
+- Créer un fichier `.env` dans `fridgey-backend/` (non versionné) avec par exemple:
   - `DB_USER=...`
   - `DB_PASSWORD=...`
   - `DB_HOST=localhost`
   - `DB_PORT=3306`
   - `DB_NAME=fridgey`
+  - Option tests (au choix):
+    - `TEST_DATABASE_URL=mysql+pymysql://user:pass@host:3306/fridgey_test`
+    - ou `DB_NAME_TEST=fridgey_test` (le nom de base de test sera créé si possible)
 
 **Lancement API**
 - Démarrer le serveur: `cd fridgey-backend && uvicorn app.main:app --reload`
@@ -72,7 +75,7 @@
     - Un test précis: `pytest fridgey-backend/tests/TV/test_groups_tv.py::test_groups_list_and_members -vv`
 
 **Base de test (TV) et configuration**
-- Variables d’environnement supportées:
+- Variables d’environnement supportées (harmonisées):
   - `TEST_DATABASE_URL`: URL complète SQLAlchemy (recommandé pour CI/CD)
   - `DB_NAME_TEST`: nom de base de test à créer/initialiser (défaut: `<DB_NAME>_test`)
 - Droits requis si `DB_NAME_TEST` est utilisé: droit `CREATE DATABASE` pour l’utilisateur MySQL, sinon créer la base manuellement.
@@ -87,3 +90,5 @@
 - TV échouent au seed: vérifier les droits `CREATE DATABASE` (ou créer manuellement la base de test), et renseigner `TEST_DATABASE_URL` ou `DB_NAME_TEST`.
 - Erreurs de connexion: vérifier les variables `.env` et l’accessibilité du serveur MySQL.
 
+**Git / secrets**
+- Le fichier `.env` n’est pas versionné (voir `.gitignore`). Garder `.env.example` pour la référence si besoin.
