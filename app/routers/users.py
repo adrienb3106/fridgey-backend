@@ -52,6 +52,27 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    # Vérifications préalables: liens et stocks
+    has_links = (
+        db.query(models.UserGroup)
+        .filter(models.UserGroup.user_id == user_id)
+        .first()
+        is not None
+    )
+    has_stocks = (
+        db.query(models.Stock)
+        .filter(models.Stock.user_id == user_id)
+        .first()
+        is not None
+    )
+    if has_links or has_stocks:
+        details = []
+        if has_links:
+            details.append("des appartenances à des groupes")
+        if has_stocks:
+            details.append("des stocks associés")
+        msg = "Suppression interdite: l'utilisateur possède " + " et ".join(details)
+        raise HTTPException(status_code=409, detail=msg)
     db.delete(user)
     db.commit()
     return {"message": f"Utilisateur {user_id} supprimé"}

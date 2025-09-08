@@ -49,6 +49,18 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
     item = db.query(models.Item).filter(models.Item.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Produit introuvable")
+    # Vérification préalable: stocks associés
+    has_stocks = (
+        db.query(models.Stock)
+        .filter(models.Stock.item_id == item_id)
+        .first()
+        is not None
+    )
+    if has_stocks:
+        raise HTTPException(
+            status_code=409,
+            detail="Suppression interdite: le produit possède des stocks associés",
+        )
     db.delete(item)
     db.commit()
     return {"message": f"Produit {item_id} supprimé"}

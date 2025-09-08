@@ -49,6 +49,27 @@ def delete_group(group_id: int, db: Session = Depends(get_db)):
     group = db.query(models.Group).filter(models.Group.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Groupe introuvable")
+    # Vérifications préalables: liens et stocks
+    has_links = (
+        db.query(models.UserGroup)
+        .filter(models.UserGroup.group_id == group_id)
+        .first()
+        is not None
+    )
+    has_stocks = (
+        db.query(models.Stock)
+        .filter(models.Stock.group_id == group_id)
+        .first()
+        is not None
+    )
+    if has_links or has_stocks:
+        details = []
+        if has_links:
+            details.append("des utilisateurs liés")
+        if has_stocks:
+            details.append("des stocks associés")
+        msg = "Suppression interdite: le groupe possède " + " et ".join(details)
+        raise HTTPException(status_code=409, detail=msg)
     db.delete(group)
     db.commit()
     return {"message": f"Groupe {group_id} supprimé"}

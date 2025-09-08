@@ -89,7 +89,6 @@ def test_group_delete_with_existing_link_returns_400(client):
     )
     assert rl.status_code == 200
 
-    # Attempt to delete the group while link exists -> FK violation handled by handler
+    # Attempt to delete the group while link exists -> 409 explicite
     r_del = client.delete(f"/groups/{gid}")
-    # Under SQLite (TU), IntegrityError does not expose MySQL error codes; default mapping is 400
-    assert r_del.status_code == 400
+    assert r_del.status_code == 409
